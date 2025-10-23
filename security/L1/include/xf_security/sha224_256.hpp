@@ -506,6 +506,7 @@ inline void dup_strm(hls::stream<uint64_t>& in_strm,
     while (!e) {
 #pragma HLS loop_tripcount min = 1 max = 1 avg = 1
 #pragma HLS pipeline II = 1
+#pragma HLS unroll factor = 2
         uint64_t in_r = in_strm.read();
 
         out1_strm.write(in_r);
@@ -538,31 +539,77 @@ inline void generateMsgSchedule(hls::stream<SHA256Block>& blk_strm,
 #pragma HLS array_partition variable = W complete
 
         LOOP_SHA256_PREPARE_WT16:
-            for (short t = 0; t < 16; ++t) {
-#pragma HLS pipeline II = 1
-                uint32_t Wt = blk.M[t];
-                W[t] = Wt;
-                w_strm.write(Wt);
+            for (short i = 0; i < 16; ++i) {
+#pragma HLS pipeline II = 2
+#pragma HLS unroll factor = 3
+                w_strm.write(blk.M[i]);
             }
 
         LOOP_SHA256_PREPARE_WT64:
-            for (short t = 16; t < 64; ++t) {
-#pragma HLS pipeline II = 1
-                // uint32_t Wt = SSIG1(W[t - 2]) + W[t - 7] + SSIG0(W[t - 15]) + W[t - 16];
-                // W[t] = Wt;
-                uint32_t Wt = SSIG1(W[14]) + W[9] + SSIG0(W[1]) + W[0];
-                for (unsigned char j = 0; j < 15; ++j) {
-                    W[j] = W[j + 1];
-                }
-                W[15] = Wt;
-                w_strm.write(Wt);
+            for (short i = 16; i < 64; ++i) {
+#pragma HLS pipeline II = 2
+#pragma HLS unroll factor = 4
+                uint32_t w0 = blk.M[(i - 16) & 15];
+                uint32_t w1 = blk.M[(i - 15) & 15];
+                uint32_t w9 = blk.M[(i - 7) & 15];
+                uint32_t w14 = blk.M[(i - 2) & 15];
+                uint32_t wt = SSIG1(w14) + w9 + SSIG0(w1) + w0;
+                blk.M[i & 15] = wt;
+                w_strm.write(wt);
             }
         }
         e = end_nblk_strm.read();
     }
 }
 
-inline void sha256_iter(uint32_t& a,
+// Helper function for optimized addition
+inline uint32_t add_f(uint32_t x, uint32_t y) {
+#pragma HLS inline
+    uint32_t s;
+#pragma HLS bind_op variable=s op=add impl=fabric latency=0
+    s = x + y;
+    return s;
+}
+
+// Advanced adder function with explicit latency control
+inline uint32_t add_f_staged(uint32_t a, uint32_t b) {
+#pragma HLS INLINE
+uint32_t s;
+#pragma HLS bind_op variable=s op=add impl=fabric latency=0
+s = a + b;
+return s;
+}
+
+// Carry Save Adder implementation for critical path optimization
+inline uint32_t csa_add_3(uint32_t a, uint32_t b, uint32_t c) {
+#pragma HLS INLINE
+    // Carry Save Adder: sum = a XOR b XOR c, carry = (a&b) | (b&c) | (a&c)
+    uint32_t sum = a ^ b ^ c;
+    uint32_t carry = ((a & b) | (b & c) | (a & c)) << 1;
+    return sum + carry;
+}
+
+// 4-operand Carry Save Adder for deeper optimization
+inline uint32_t csa_add_4(uint32_t a, uint32_t b, uint32_t c, uint32_t d) {
+#pragma HLS INLINE
+    // First level CSA
+    uint32_t sum1 = a ^ b ^ c;
+    uint32_t carry1 = ((a & b) | (b & c) | (a & c)) << 1;
+    
+    // Second level CSA with d
+    uint32_t sum2 = sum1 ^ d ^ carry1;
+    uint32_t carry2 = ((sum1 & d) | (d & carry1) | (sum1 & carry1)) << 1;
+    
+    return sum2 + carry2;
+}
+
+// Multi-stage adder for critical path reduction
+inline uint32_t add_3_staged(uint32_t a, uint32_t b, uint32_t c) {
+#pragma HLS INLINE
+    return csa_add_3(a, b, c);
+}
+
+static void sha256_iter(uint32_t& a,
                         uint32_t& b,
                         uint32_t& c,
                         uint32_t& d,
@@ -575,20 +622,20 @@ inline void sha256_iter(uint32_t& a,
                         const uint32_t K[],
                         short t) {
     uint32_t Wt = w_strm.read();
-    /// temporal variables
-    uint32_t T1, T2;
-    T1 = h + BSIG1(e) + CH(e, f, g) + Kt + Wt;
-    T2 = BSIG0(a) + MAJ(a, b, c);
+    
+    // Use CSA for T1 calculation to reduce critical path
+    uint32_t T1 = csa_add_4(h, BSIG1(e), CH(e, f, g), add_f(Kt, Wt));
+    uint32_t T2 = add_f(BSIG0(a), MAJ(a, b, c));
 
-    // update working variables.
+    // 更新工作变量
     h = g;
     g = f;
     f = e;
-    e = d + T1;
+    e = add_f(d, T1);
     d = c;
     c = b;
     b = a;
-    a = T1 + T2;
+    a = add_f(T1, T2);
 
     _XF_SECURITY_PRINT(
         "DEBUG: Kt=%08x, Wt=%08x\n"
@@ -605,7 +652,7 @@ inline void sha256_iter(uint32_t& a,
 /// @param nblk_strm number of message block.
 /// @param end_nblk_strm end flag for number of message block.
 /// @param hash_strm the hash result stream.
-/// @param end_hash_strm end flag for hash result.
+/// @param end_hash_strm end falg stream of output, one per hash.
 template <int h_width>
 void sha256Digest(hls::stream<uint64_t>& nblk_strm,
                   hls::stream<bool>& end_nblk_strm,
@@ -666,6 +713,14 @@ LOOP_SHA256_DIGEST_MAIN:
 
             /// working variables.
             uint32_t a, b, c, d, e, f, g, h;
+#pragma HLS bind_storage variable=a type=register impl=auto
+#pragma HLS bind_storage variable=b type=register impl=auto  
+#pragma HLS bind_storage variable=c type=register impl=auto
+#pragma HLS bind_storage variable=d type=register impl=auto
+#pragma HLS bind_storage variable=e type=register impl=auto
+#pragma HLS bind_storage variable=f type=register impl=auto
+#pragma HLS bind_storage variable=g type=register impl=auto
+#pragma HLS bind_storage variable=h type=register impl=auto
 
             // loading working variables.
             a = H[0];
@@ -679,10 +734,14 @@ LOOP_SHA256_DIGEST_MAIN:
 
             uint32_t Kt = K[0];
         LOOP_SHA256_UPDATE_64_ROUNDS:
-            for (short t = 0; t < 64; ++t) {
-#pragma HLS pipeline II = 1
+            for (short t = 0; t < 64; t += 2) {
+#pragma HLS PIPELINE II=1
+#pragma HLS unroll factor=2
+                // First round
                 sha256_iter(a, b, c, d, e, f, g, h, w_strm, Kt, K, t);
-            } // 64 round loop
+                // Second round
+                sha256_iter(a, b, c, d, e, f, g, h, w_strm, Kt, K, t+1);
+        } // 64 round loop (32 iterations, 2 rounds each)
 
             // store working variables to internal states.
             H[0] = a + H[0];
@@ -752,35 +811,35 @@ inline void sha256_top(hls::stream<ap_uint<m_width> >& msg_strm,
 #pragma HLS DATAFLOW
     /// 512-bit Block stream
     hls::stream<SHA256Block> blk_strm("blk_strm");
-#pragma HLS STREAM variable = blk_strm depth = 32
-#pragma HLS RESOURCE variable = blk_strm core = FIFO_LUTRAM
+#pragma HLS STREAM variable = blk_strm depth = 64
+#pragma HLS bind_storage variable = blk_strm type = fifo impl = lutram
 
     /// number of Blocks, send per msg
     hls::stream<uint64_t> nblk_strm("nblk_strm");
-#pragma HLS STREAM variable = nblk_strm depth = 32
-#pragma HLS RESOURCE variable = nblk_strm core = FIFO_LUTRAM
+#pragma HLS STREAM variable = nblk_strm depth = 8
+#pragma HLS bind_storage variable = nblk_strm type = fifo impl = lutram
     hls::stream<uint64_t> nblk_strm1("nblk_strm1");
-#pragma HLS STREAM variable = nblk_strm1 depth = 32
-#pragma HLS RESOURCE variable = nblk_strm1 core = FIFO_LUTRAM
+#pragma HLS STREAM variable = nblk_strm1 depth = 8
+#pragma HLS bind_storage variable = nblk_strm1 type = fifo impl = lutram
     hls::stream<uint64_t> nblk_strm2("nblk_strm2");
-#pragma HLS STREAM variable = nblk_strm2 depth = 32
-#pragma HLS RESOURCE variable = nblk_strm2 core = FIFO_LUTRAM
+#pragma HLS STREAM variable = nblk_strm2 depth = 8
+#pragma HLS bind_storage variable = nblk_strm2 type = fifo impl = lutram
 
-    /// end flag, send per msg.
+    /// end flag, send per msg
     hls::stream<bool> end_nblk_strm("end_nblk_strm");
-#pragma HLS STREAM variable = end_nblk_strm depth = 32
-#pragma HLS RESOURCE variable = end_nblk_strm core = FIFO_LUTRAM
+#pragma HLS STREAM variable = end_nblk_strm depth = 8
+#pragma HLS bind_storage variable = end_nblk_strm type = fifo impl = lutram
     hls::stream<bool> end_nblk_strm1("end_nblk_strm1");
-#pragma HLS STREAM variable = end_nblk_strm1 depth = 32
-#pragma HLS RESOURCE variable = end_nblk_strm1 core = FIFO_LUTRAM
+#pragma HLS STREAM variable = end_nblk_strm1 depth = 8
+#pragma HLS bind_storage variable = end_nblk_strm1 type = fifo impl = lutram
     hls::stream<bool> end_nblk_strm2("end_nblk_strm2");
-#pragma HLS STREAM variable = end_nblk_strm2 depth = 32
-#pragma HLS RESOURCE variable = end_nblk_strm2 core = FIFO_LUTRAM
+#pragma HLS STREAM variable = end_nblk_strm2 depth = 8
+#pragma HLS bind_storage variable = end_nblk_strm2 type = fifo impl = lutram
 
     /// W, 64 items for each block
     hls::stream<uint32_t> w_strm("w_strm");
-#pragma HLS STREAM variable = w_strm depth = 32
-#pragma HLS RESOURCE variable = w_strm core = FIFO_LUTRAM
+#pragma HLS STREAM variable = w_strm depth = 128
+#pragma HLS bind_storage variable = w_strm type = fifo impl = lutram
 
     // Generate block stream
     preProcessing(msg_strm, len_strm, end_len_strm, //

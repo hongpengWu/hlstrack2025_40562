@@ -87,16 +87,16 @@ void kpadHash(hls::stream<ap_uint<dataW> >& keyStrm,
 #pragma HLS dataflow
 
     hls::stream<bool> eKeyStrm;
-#pragma HLS stream variable = eKeyStrm depth = 4
+#pragma HLS stream variable = eKeyStrm depth = 8
 #pragma HLS resource variable = eKeyStrm core = FIFO_LUTRAM
     hls::stream<ap_uint<lW> > keyLenStrm;
-#pragma HLS stream variable = keyLenStrm depth = 4
+#pragma HLS stream variable = keyLenStrm depth = 8
 #pragma HLS resource variable = keyLenStrm core = FIFO_LUTRAM
     hls::stream<ap_uint<hshW> > keyHashStrm;
-#pragma HLS stream variable = keyHashStrm depth = 4
+#pragma HLS stream variable = keyHashStrm depth = 8
 #pragma HLS resource variable = keyHashStrm core = FIFO_LUTRAM
     hls::stream<bool> ekeyHashStrm;
-#pragma HLS stream variable = ekeyHashStrm depth = 4
+#pragma HLS stream variable = ekeyHashStrm depth = 8
 #pragma HLS resource variable = ekeyHashStrm core = FIFO_LUTRAM
 
     expandStrm<lW, keyLen>(eStrm, eKeyStrm, keyLenStrm);
@@ -161,7 +161,7 @@ void mergeKipad(hls::stream<ap_uint<blockSize * 8> >& kipadStrm,
 
         for (int i = 0; i < ((blockSize * 8 + dataW - 1) / dataW); i++) {
 #pragma HLS pipeline II = 1
-            // mergeKipadStrm.write(kipad.range(blockSize * 8 - 1 - i * dataW, blockSize * 8 - (i + 1) * dataW));
+#pragma HLS unroll factor = 8
             mergeKipadStrm.write(kipad.range(blockSize * 8 - 1, blockSize * 8 - dataW));
             kipad <<= dataW;
         }
@@ -170,6 +170,7 @@ void mergeKipad(hls::stream<ap_uint<blockSize * 8> >& kipadStrm,
 
         for (int i = 0; i < ((ml * 8 + dataW - 1) / dataW); i++) {
 #pragma HLS pipeline II = 1
+#pragma HLS unroll factor = 8
             mergeKipadStrm.write(msgStrm.read());
         }
     }
@@ -188,13 +189,13 @@ void msgHash(hls::stream<ap_uint<blockSize * 8> >& kipadStrm,
 #pragma HLS dataflow
 
     hls::stream<ap_uint<dataW> > mergeKipadStrm;
-#pragma HLS stream variable = mergeKipadStrm depth = 128
+#pragma HLS stream variable = mergeKipadStrm depth = 64
 #pragma HLS resource variable = mergeKipadStrm core = FIFO_BRAM
     hls::stream<ap_uint<lW> > mergeKipadLenStrm;
-#pragma HLS stream variable = mergeKipadLenStrm depth = 4
+#pragma HLS stream variable = mergeKipadLenStrm depth = 8
 #pragma HLS resource variable = mergeKipadLenStrm core = FIFO_LUTRAM
     hls::stream<bool> eMergeKipadLenStrm;
-#pragma HLS stream variable = eMergeKipadLenStrm depth = 4
+#pragma HLS stream variable = eMergeKipadLenStrm depth = 8
 #pragma HLS resource variable = eMergeKipadLenStrm core = FIFO_LUTRAM
 
     mergeKipad<dataW, lW, hshW, blockSize>(kipadStrm, kopadInStrm, msgStrm, msgLenStrm, eLenStrm, mergeKipadStrm,
@@ -219,12 +220,14 @@ void mergeKopad(hls::stream<ap_uint<blockSize * 8> >& kopadStrm,
 
         for (int i = 0; i < ((blockSize * 8 + dataW - 1) / dataW); i++) {
 #pragma HLS pipeline II = 1
+#pragma HLS unroll factor = 8
             mergeKopadStrm.write(kopad.range(blockSize * 8 - 1, blockSize * 8 - dataW));
             kopad <<= dataW;
         }
 
         for (int i = 0; i < ((hshW + dataW - 1) / dataW); i++) {
 #pragma HLS pipeline II = 1
+#pragma HLS unroll factor = 8
             mergeKopadStrm.write(msgHash.range(dataW - 1, 0));
             msgHash >>= dataW;
         }
@@ -241,14 +244,14 @@ void resHash(hls::stream<ap_uint<blockSize * 8> >& kopadStrm,
 #pragma HLS dataflow
 
     hls::stream<ap_uint<dataW> > mergeKopadStrm;
-#pragma HLS stream variable = mergeKopadStrm depth = 4
-#pragma HLS resource variable = mergeKopadStrm core = FIFO_LUTRAM
+#pragma HLS stream variable = mergeKopadStrm depth = 2
+#pragma HLS resource variable = mergeKopadStrm core = FIFO_BRAM
     hls::stream<ap_uint<lW> > mergeKopadLenStrm;
-#pragma HLS stream variable = mergeKopadLenStrm depth = 4
-#pragma HLS resource variable = mergeKopadLenStrm core = FIFO_LUTRAM
+#pragma HLS stream variable = mergeKopadLenStrm depth = 2
+#pragma HLS resource variable = mergeKopadLenStrm core = FIFO_BRAM
     hls::stream<bool> eMergeKopadLenStrm;
-#pragma HLS stream variable = eMergeKopadLenStrm depth = 4
-#pragma HLS resource variable = eMergeKopadLenStrm core = FIFO_LUTRAM
+#pragma HLS stream variable = eMergeKopadLenStrm depth = 2
+#pragma HLS resource variable = eMergeKopadLenStrm core = FIFO_BRAM
 
     mergeKopad<dataW, lW, hshW, keyLen, blockSize>(kopadStrm, msgHashStrm, eMsgHashStrm, mergeKopadStrm,
                                                    mergeKopadLenStrm, eMergeKopadLenStrm);
@@ -265,25 +268,25 @@ void hmacDataflow(hls::stream<ap_uint<dataW> >& keyStrm,
                   hls::stream<bool>& eHshStrm) {
 #pragma HLS dataflow
     hls::stream<bool> eKipadStrm;
-#pragma HLS stream variable = eKipadStrm depth = 4
-#pragma HLS resource variable = eKipadStrm core = FIFO_LUTRAM
+#pragma HLS stream variable = eKipadStrm depth = 2
+#pragma HLS bind_storage variable = eKipadStrm type = fifo impl = srl
 
     hls::stream<ap_uint<blockSize * 8> > kipadStrm;
-#pragma HLS stream variable = kipadStrm depth = 4
-#pragma HLS resource variable = kipadStrm core = FIFO_LUTRAM
+#pragma HLS stream variable = kipadStrm depth = 2
+#pragma HLS bind_storage variable = kipadStrm type = fifo impl = srl
     hls::stream<ap_uint<blockSize * 8> > kopadStrm;
-#pragma HLS stream variable = kopadStrm depth = 4
-#pragma HLS resource variable = kopadStrm core = FIFO_LUTRAM
+#pragma HLS stream variable = kopadStrm depth = 2
+#pragma HLS bind_storage variable = kopadStrm type = fifo impl = srl
     hls::stream<ap_uint<blockSize * 8> > kopad2Strm;
-#pragma HLS stream variable = kopad2Strm depth = 4
-#pragma HLS resource variable = kopad2Strm core = FIFO_LUTRAM
+#pragma HLS stream variable = kopad2Strm depth = 2
+#pragma HLS bind_storage variable = kopad2Strm type = fifo impl = srl
 
     hls::stream<ap_uint<hshW> > msgHashStrm;
-#pragma HLS stream variable = msgHashStrm depth = 4
-#pragma HLS resource variable = msgHashStrm core = FIFO_LUTRAM
+#pragma HLS stream variable = msgHashStrm depth = 2
+#pragma HLS bind_storage variable = msgHashStrm type = fifo impl = srl
     hls::stream<bool> eMsgHashStrm;
-#pragma HLS stream variable = eMsgHashStrm depth = 4
-#pragma HLS resource variable = eMsgHashStrm core = FIFO_LUTRAM
+#pragma HLS stream variable = eMsgHashStrm depth = 2
+#pragma HLS bind_storage variable = eMsgHashStrm type = fifo impl = srl
 
     kpad<dataW, lW, hshW, keyLen, blockSize, F>(keyStrm, eLenStrm, kipadStrm, kopadStrm, eKipadStrm);
 

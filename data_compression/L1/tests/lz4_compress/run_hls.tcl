@@ -1,4 +1,4 @@
-# Copyright (C) 2019-2022, Xilinx, Inc.
+# Copyright (C) 2019-2022 Xilinx, Inc.
 # Copyright (C) 2022-2023, Advanced Micro Devices, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,7 +27,7 @@ set PROJ "lz4_compress_test.prj"
 set SOLN "sol1"
 
 if {![info exists CLKP]} {
-  set CLKP 15.0
+  set CLKP 13.5
 }
 
 open_project -reset $PROJ

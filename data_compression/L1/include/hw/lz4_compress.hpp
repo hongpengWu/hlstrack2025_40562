@@ -268,6 +268,7 @@ static void lz4Compress(hls::stream<ap_uint<32> >& inStream,
 #pragma HLS STREAM variable = lit_outStream depth = MAX_LIT_COUNT
 #pragma HLS STREAM variable = lenOffset_Stream depth = c_gmemBurstSize
 
+#pragma HLS BIND_STORAGE variable = lit_outStream type = FIFO impl = SRL
 #pragma HLS BIND_STORAGE variable = lenOffset_Stream type = FIFO impl = SRL
 
 #pragma HLS dataflow
@@ -297,11 +298,12 @@ void hlsLz4Core(hls::stream<data_t>& inStream,
     hls::stream<ap_uint<32> > compressdStream("compressdStream");
     hls::stream<ap_uint<32> > bestMatchStream("bestMatchStream");
     hls::stream<ap_uint<32> > boosterStream("boosterStream");
-#pragma HLS STREAM variable = compressdStream depth = 8
-#pragma HLS STREAM variable = bestMatchStream depth = 8
-#pragma HLS STREAM variable = boosterStream depth = 8
+#pragma HLS STREAM variable = compressdStream depth = 32
+#pragma HLS STREAM variable = bestMatchStream depth = 32
+#pragma HLS STREAM variable = boosterStream depth = 32
 
 #pragma HLS BIND_STORAGE variable = compressdStream type = FIFO impl = SRL
+#pragma HLS BIND_STORAGE variable = bestMatchStream type = FIFO impl = SRL
 #pragma HLS BIND_STORAGE variable = boosterStream type = FIFO impl = SRL
 
 #pragma HLS dataflow
@@ -342,6 +344,8 @@ void hlsLz4(const data_t* in,
 #pragma HLS BIND_STORAGE variable = outStream type = FIFO impl = SRL
 
     hls::stream<uint32_t> compressedSize[NUM_BLOCK];
+
+#pragma HLS BIND_STORAGE variable = compressedSize type = FIFO impl = SRL
 
 #pragma HLS dataflow
     xf::compression::details::mm2multStreamSize<8, NUM_BLOCK, DATAWIDTH, BURST_SIZE>(in, input_idx, inStream,

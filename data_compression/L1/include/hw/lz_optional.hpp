@@ -431,8 +431,12 @@ void lzBooster(hls::stream<IntVectorStream_dt<32, 1> >& inStream, hls::stream<In
     IntVectorStream_dt<32, 1> outStreamValue;
     ap_uint<32> outValue = 0;
 
+#pragma HLS BIND_STORAGE variable = inStream type = fifo impl = srl
+#pragma HLS BIND_STORAGE variable = outStream type = fifo impl = srl
+
     while (true) {
         uint8_t local_mem[c_boosterOffsetWindow];
+#pragma HLS BIND_STORAGE variable = local_mem type = RAM_S2P impl = LUTRAM
         hls::stream<ap_uint<32> > lclBufStream("lclBufStream");
 #pragma HLS STREAM variable = lclBufStream depth = c_fifo_depth
 #pragma HLS BIND_STORAGE variable = lclBufStream type = fifo impl = srl
@@ -557,7 +561,10 @@ void lzBooster(hls::stream<IntVectorStream_dt<32, 1> >& inStream, hls::stream<In
 template <int MAX_MATCH_LEN, int BOOSTER_OFFSET_WINDOW = 16 * 1024, int LEFT_BYTES = 64>
 void lzBooster(hls::stream<compressd_dt>& inStream, hls::stream<compressd_dt>& outStream, uint32_t input_size) {
     if (input_size == 0) return;
+#pragma HLS BIND_STORAGE variable = inStream type = fifo impl = srl
+#pragma HLS BIND_STORAGE variable = outStream type = fifo impl = srl
     uint8_t local_mem[BOOSTER_OFFSET_WINDOW];
+#pragma HLS BIND_STORAGE variable = local_mem type = RAM_S2P impl = LUTRAM
     uint32_t match_loc = 0;
     uint32_t match_len = 0;
     compressd_dt outValue;

@@ -17,8 +17,8 @@
 set CSIM 1
 set CSYNTH 1
 set COSIM 1
-set VIVADO_SYN 0
-set VIVADO_IMPL 0
+set VIVADO_SYN 1
+set VIVADO_IMPL 1
 set CUR_DIR [pwd]
 set XF_PROJ_ROOT $CUR_DIR/../../..
 set XPART xc7z020-clg484-1
@@ -27,7 +27,7 @@ set PROJ "lz4_compress_test.prj"
 set SOLN "sol1"
 
 if {![info exists CLKP]} {
-  set CLKP 13.5
+  set CLKP 13.9
 }
 
 open_project -reset $PROJ

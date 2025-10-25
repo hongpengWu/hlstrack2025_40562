@@ -63,7 +63,8 @@ void lzCompress(hls::stream<ap_uint<8> >& inStream, hls::stream<ap_uint<32> >& o
     if (input_size == 0) return;
     // Dictionary
     uintDictV_t dict[LZ_DICT_SIZE];
-#pragma HLS BIND_STORAGE variable = dict type = RAM_T2P impl = BRAM
+#pragma HLS ARRAY_PARTITION variable = dict cyclic factor = 16 dim = 1
+#pragma HLS BIND_STORAGE variable = dict type = RAM_S2P impl = BRAM
     uintDictV_t resetValue = 0;
     for (int i = 0; i < MATCH_LEVEL; i++) {
 #pragma HLS UNROLL
@@ -73,7 +74,7 @@ void lzCompress(hls::stream<ap_uint<8> >& inStream, hls::stream<ap_uint<32> >& o
  dict_flush:
     for (int i = 0; i < LZ_DICT_SIZE; i++) {
 #pragma HLS PIPELINE II = 1
-#pragma HLS UNROLL FACTOR = 8
+#pragma HLS UNROLL FACTOR = 16
         dict[i] = resetValue;
     }
 

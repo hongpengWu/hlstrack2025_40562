@@ -273,20 +273,35 @@ Function_cholesky_rsqrt_fixed:;
 // - Required for complex fixed point implementations
 template <typename AType, typename BType, typename CType>
 void cholesky_prod_sum_mult(AType A, BType B, CType& C) {
+#pragma HLS INLINE
 Function_cholesky_prod_sum_mult_real:;
     C = A * B;
 }
 template <typename AType, typename BType, typename CType>
 void cholesky_prod_sum_mult(hls::x_complex<AType> A, BType B, hls::x_complex<CType>& C) {
+#pragma HLS INLINE
 Function_cholesky_prod_sum_mult_complex:;
-    C.real(A.real() * B);
-    C.imag(A.imag() * B);
+    CType rtmp;
+#pragma HLS BIND_OP variable=rtmp op=mul impl=DSP
+    CType itmp;
+#pragma HLS BIND_OP variable=itmp op=mul impl=DSP
+    rtmp = A.real() * B;
+    itmp = A.imag() * B;
+    C.real(rtmp);
+    C.imag(itmp);
 }
 template <typename AType, typename BType, typename CType>
 void cholesky_prod_sum_mult(std::complex<AType> A, BType B, std::complex<CType>& C) {
+#pragma HLS INLINE
 Function_cholesky_prod_sum_mult_complex:;
-    C.real(A.real() * B);
-    C.imag(A.imag() * B);
+    CType rtmp;
+#pragma HLS BIND_OP variable=rtmp op=mul impl=DSP
+    CType itmp;
+#pragma HLS BIND_OP variable=itmp op=mul impl=DSP
+    rtmp = A.real() * B;
+    itmp = A.imag() * B;
+    C.real(rtmp);
+    C.imag(itmp);
 }
 
 // ===================================================================================================================
@@ -418,7 +433,9 @@ int choleskyAlt(const InputType A[RowsColsA][RowsColsA], OutputType L[RowsColsA]
     // - Requires additional logic to generate the memory indexes
     // - For smaller matrix sizes there maybe be an increase in memory usage
     OutputType L_internal[(RowsColsA * RowsColsA - RowsColsA) / 2];
+#pragma HLS ARRAY_PARTITION variable=L_internal complete dim=1
     typename CholeskyTraits::RECIP_DIAG_T diag_internal[RowsColsA];
+#pragma HLS ARRAY_PARTITION variable=diag_internal complete dim=1
 
     typename CholeskyTraits::ACCUM_T square_sum;
     typename CholeskyTraits::ACCUM_T A_cast_to_sum;
@@ -446,6 +463,8 @@ row_loop:
     col_loop:
         for (int j = 0; j < i; j++) {
 #pragma HLS loop_tripcount max = 1 + RowsColsA / 2
+#pragma HLS PIPELINE II=1
+#pragma HLS UNROLL factor=2
             // Index generation
             int j_sub1 = j - 1;
             int j_off = ((j_sub1 * j_sub1 - j_sub1) / 2) + j_sub1;
@@ -459,6 +478,8 @@ row_loop:
             for (int k = 0; k < j; k++) {
 #pragma HLS loop_tripcount max = 1 + RowsColsA / 2
 #pragma HLS PIPELINE II = CholeskyTraits::INNER_II
+#pragma HLS UNROLL factor=2
+#pragma HLS BIND_OP variable=prod op=mul impl=DSP
                 prod = -L_internal[i_off + k] * hls::x_conj(L_internal[j_off + k]);
                 prod_cast_to_sum = prod;
                 product_sum += prod_cast_to_sum;
@@ -471,7 +492,10 @@ row_loop:
             // Round to target format using method specifed by traits defined types.
             new_L = new_L_off_diag;
             // Build sum for use in diagonal calculation for this row.
-            square_sum += hls::x_conj(new_L) * new_L;
+            typename CholeskyTraits::ACCUM_T nl_mul;
+#pragma HLS BIND_OP variable=nl_mul op=mul impl=DSP
+            nl_mul = (typename CholeskyTraits::ACCUM_T)(hls::x_conj(new_L) * new_L);
+            square_sum += nl_mul;
             // Store result
             L_internal[i_off + j] = new_L;
             if (LowerTriangularL == true) {
@@ -494,10 +518,12 @@ row_loop:
         }
         // Round to target format using method specifed by traits defined types.
         new_L = new_L_diag;
-        // Generate the reciprocal of the diagonal for internal use to aviod the latency of a divide in every
+        // Generate the reciprocal of the diagonal using computed sqrt to avoid extra sqrt latency
         // off-diagonal calculation
-        A_minus_sum_cast_diag = A_minus_sum;
-        cholesky_rsqrt(hls::x_real(A_minus_sum_cast_diag), new_L_diag_recip);
+        // A_minus_sum_cast_diag = A_minus_sum;
+        // cholesky_rsqrt(hls::x_real(A_minus_sum_cast_diag), new_L_diag_recip);
+        typename CholeskyTraits::RECIP_DIAG_T one = 1;
+        new_L_diag_recip = one / (typename CholeskyTraits::RECIP_DIAG_T)hls::x_real(new_L_diag);
         // Store diagonal value
         diag_internal[i] = new_L_diag_recip;
         if (LowerTriangularL == true) {

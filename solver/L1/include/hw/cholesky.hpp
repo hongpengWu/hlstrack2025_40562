@@ -260,12 +260,25 @@ Function_cholesky_rsqrt_default:;
 template <int W1, int I1, ap_q_mode Q1, ap_o_mode O1, int N1, int W2, int I2, ap_q_mode Q2, ap_o_mode O2, int N2>
 void cholesky_rsqrt(ap_fixed<W1, I1, Q1, O1, N1> x, ap_fixed<W2, I2, Q2, O2, N2>& res) {
 Function_cholesky_rsqrt_fixed:;
-    ap_fixed<W2, I2, Q2, O2, N2> one = 1;
-    ap_fixed<W1, I1, Q1, O1, N1> sqrt_res;
-    ap_fixed<W2, I2, Q2, O2, N2> sqrt_res_cast;
-    sqrt_res = x_sqrt(x);
-    sqrt_res_cast = sqrt_res;
-    res = one / sqrt_res_cast;
+    // Use floating rsqrt and cast back, since x_rsqrt doesn't support ap_fixed
+    double rs = x_rsqrt((double)x);
+    res = (ap_fixed<W2, I2, Q2, O2, N2>)rs;
+}
+
+// Helper: assign diagonal value from a real to DIAG_T output type
+template <typename T_REAL, typename T_OUT>
+void cholesky_set_diag_from_real(T_REAL real_val, T_OUT& dout) {
+    dout = (T_OUT)real_val;
+}
+template <typename T_REAL, typename T_OUT>
+void cholesky_set_diag_from_real(T_REAL real_val, hls::x_complex<T_OUT>& dout) {
+    dout.real(real_val);
+    dout.imag(0);
+}
+template <typename T_REAL, typename T_OUT>
+void cholesky_set_diag_from_real(T_REAL real_val, std::complex<T_OUT>& dout) {
+    dout.real(real_val);
+    dout.imag(0);
 }
 
 // Local multiplier to handle a complex case currently not supported by the hls::x_complex class
@@ -427,47 +440,37 @@ template <bool LowerTriangularL, int RowsColsA, typename CholeskyTraits, class I
 int choleskyAlt(const InputType A[RowsColsA][RowsColsA], OutputType L[RowsColsA][RowsColsA]) {
     int return_code = 0;
 
-    // Optimize internal memories
-    // - For complex data types the diagonal will be real only, plus for fixed point it must be stored to a
-    //   higher precision.
-    // - Requires additional logic to generate the memory indexes
-    // - For smaller matrix sizes there maybe be an increase in memory usage
-    OutputType L_internal[(RowsColsA * RowsColsA - RowsColsA) / 2];
-#pragma HLS ARRAY_PARTITION variable=L_internal complete dim=1
+    // ARCH1 with ARCH2-inspired structure: use 2D L_internal and fixed-bound loops
+    OutputType L_internal[RowsColsA][RowsColsA];
+#pragma HLS ARRAY_PARTITION variable=L_internal complete dim=CholeskyTraits::UNROLL_DIM
     typename CholeskyTraits::RECIP_DIAG_T diag_internal[RowsColsA];
 #pragma HLS ARRAY_PARTITION variable=diag_internal complete dim=1
 
     typename CholeskyTraits::ACCUM_T square_sum;
     typename CholeskyTraits::ACCUM_T A_cast_to_sum;
     typename CholeskyTraits::ADD_T A_minus_sum;
-    typename CholeskyTraits::DIAG_T A_minus_sum_cast_diag;
     typename CholeskyTraits::DIAG_T new_L_diag;
     typename CholeskyTraits::RECIP_DIAG_T new_L_diag_recip;
     typename CholeskyTraits::PROD_T prod;
     typename CholeskyTraits::ACCUM_T prod_cast_to_sum;
     typename CholeskyTraits::ACCUM_T product_sum;
-    typename CholeskyTraits::OFF_DIAG_T prod_cast_to_off_diag;
     typename CholeskyTraits::RECIP_DIAG_T L_diag_recip;
     typename CholeskyTraits::OFF_DIAG_T new_L_off_diag;
     typename CholeskyTraits::L_OUTPUT_T new_L;
-    typename CholeskyTraits::L_OUTPUT_T new_L_recip;
+    // new cast var for rsqrt path
+    typename CholeskyTraits::DIAG_T A_minus_sum_cast_diag;
+
+#pragma HLS ARRAY_PARTITION variable=A complete dim=CholeskyTraits::UNROLL_DIM
+#pragma HLS ARRAY_PARTITION variable=L complete dim=CholeskyTraits::UNROLL_DIM
 
 row_loop:
     for (int i = 0; i < RowsColsA; i++) {
-        // Index generation for optimized/packed L_internal memory
-        int i_sub1 = i - 1;
-        int i_off = ((i_sub1 * i_sub1 - i_sub1) / 2) + i_sub1;
-
-        // Off diagonal calculation
         square_sum = 0;
     col_loop:
         for (int j = 0; j < i; j++) {
 #pragma HLS loop_tripcount max = 1 + RowsColsA / 2
 #pragma HLS PIPELINE II=1
-#pragma HLS UNROLL factor=2
-            // Index generation
-            int j_sub1 = j - 1;
-            int j_off = ((j_sub1 * j_sub1 - j_sub1) / 2) + j_sub1;
+#pragma HLS UNROLL factor=4
             // Prime the off-diagonal sum with target elements A value.
             if (LowerTriangularL == true) {
                 product_sum = A[i][j];
@@ -475,29 +478,29 @@ row_loop:
                 product_sum = hls::x_conj(A[j][i]);
             }
         sum_loop:
-            for (int k = 0; k < j; k++) {
-#pragma HLS loop_tripcount max = 1 + RowsColsA / 2
+            for (int k = 0; k < RowsColsA; k++) {
+#pragma HLS loop_tripcount max = RowsColsA
 #pragma HLS PIPELINE II = CholeskyTraits::INNER_II
-#pragma HLS UNROLL factor=2
+#pragma HLS UNROLL factor=4
 #pragma HLS BIND_OP variable=prod op=mul impl=DSP
-                prod = -L_internal[i_off + k] * hls::x_conj(L_internal[j_off + k]);
-                prod_cast_to_sum = prod;
-                product_sum += prod_cast_to_sum;
+                if (k < j) {
+                    prod = -L_internal[i][k] * hls::x_conj(L_internal[j][k]);
+                    prod_cast_to_sum = prod;
+                    product_sum += prod_cast_to_sum;
+                }
             }
-            prod_cast_to_off_diag = product_sum;
-            // Fetch diagonal value
+            // Multiply by diagonal reciprocal (avoid divide)
             L_diag_recip = diag_internal[j];
-            // Diagonal is stored in its reciprocal form so only need to multiply the product sum
-            cholesky_prod_sum_mult(prod_cast_to_off_diag, L_diag_recip, new_L_off_diag);
+            cholesky_prod_sum_mult(product_sum, L_diag_recip, new_L_off_diag);
             // Round to target format using method specifed by traits defined types.
             new_L = new_L_off_diag;
-            // Build sum for use in diagonal calculation for this row.
+            // Accumulate |new_L|^2 for diagonal calculation of row i
             typename CholeskyTraits::ACCUM_T nl_mul;
 #pragma HLS BIND_OP variable=nl_mul op=mul impl=DSP
             nl_mul = (typename CholeskyTraits::ACCUM_T)(hls::x_conj(new_L) * new_L);
             square_sum += nl_mul;
             // Store result
-            L_internal[i_off + j] = new_L;
+            L_internal[i][j] = new_L;
             if (LowerTriangularL == true) {
                 L[i][j] = new_L; // store in lower triangle
                 L[j][i] = 0;     // Zero upper
@@ -507,24 +510,29 @@ row_loop:
             }
         }
 
-        // Diagonal calculation
+        // Diagonal calculation for row i (rsqrt path)
         A_cast_to_sum = A[i][i];
         A_minus_sum = A_cast_to_sum - square_sum;
-        if (cholesky_sqrt_op(A_minus_sum, new_L_diag)) {
+        A_minus_sum_cast_diag = A_minus_sum;
 #ifndef __SYNTHESIS__
+        if (hls::x_real(A_minus_sum_cast_diag) < 0) {
             printf("ERROR: Trying to find the square root of a negative number\n");
-#endif
             return_code = 1;
         }
+#else
+        if (hls::x_real(A_minus_sum_cast_diag) < 0) {
+            return_code = 1;
+        }
+#endif
+        // Generate the reciprocal of the diagonal for internal use using rsqrt(A_minus_sum)
+        cholesky_rsqrt(hls::x_real(A_minus_sum_cast_diag), new_L_diag_recip);
+        // Compute diagonal sqrt via d * rsqrt(d) to avoid explicit sqrt
+        typename CholeskyTraits::RECIP_DIAG_T new_L_diag_real =
+            ((typename CholeskyTraits::RECIP_DIAG_T)hls::x_real(A_minus_sum_cast_diag)) * new_L_diag_recip;
+        cholesky_set_diag_from_real(new_L_diag_real, new_L_diag);
         // Round to target format using method specifed by traits defined types.
         new_L = new_L_diag;
-        // Generate the reciprocal of the diagonal using computed sqrt to avoid extra sqrt latency
-        // off-diagonal calculation
-        // A_minus_sum_cast_diag = A_minus_sum;
-        // cholesky_rsqrt(hls::x_real(A_minus_sum_cast_diag), new_L_diag_recip);
-        typename CholeskyTraits::RECIP_DIAG_T one = 1;
-        new_L_diag_recip = one / (typename CholeskyTraits::RECIP_DIAG_T)hls::x_real(new_L_diag);
-        // Store diagonal value
+        // Store diagonal reciprocal for later off-diagonal use
         diag_internal[i] = new_L_diag_recip;
         if (LowerTriangularL == true) {
             L[i][i] = new_L;

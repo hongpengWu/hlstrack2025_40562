@@ -268,24 +268,24 @@ void hmacDataflow(hls::stream<ap_uint<dataW> >& keyStrm,
                   hls::stream<bool>& eHshStrm) {
 #pragma HLS dataflow
     hls::stream<bool> eKipadStrm;
-#pragma HLS stream variable = eKipadStrm depth = 2
+#pragma HLS stream variable = eKipadStrm depth = 8
 #pragma HLS bind_storage variable = eKipadStrm type = fifo impl = srl
 
     hls::stream<ap_uint<blockSize * 8> > kipadStrm;
-#pragma HLS stream variable = kipadStrm depth = 2
+#pragma HLS stream variable = kipadStrm depth = 8
 #pragma HLS bind_storage variable = kipadStrm type = fifo impl = srl
     hls::stream<ap_uint<blockSize * 8> > kopadStrm;
-#pragma HLS stream variable = kopadStrm depth = 2
+#pragma HLS stream variable = kopadStrm depth = 8
 #pragma HLS bind_storage variable = kopadStrm type = fifo impl = srl
     hls::stream<ap_uint<blockSize * 8> > kopad2Strm;
-#pragma HLS stream variable = kopad2Strm depth = 2
+#pragma HLS stream variable = kopad2Strm depth = 8
 #pragma HLS bind_storage variable = kopad2Strm type = fifo impl = srl
 
     hls::stream<ap_uint<hshW> > msgHashStrm;
-#pragma HLS stream variable = msgHashStrm depth = 2
+#pragma HLS stream variable = msgHashStrm depth = 8
 #pragma HLS bind_storage variable = msgHashStrm type = fifo impl = srl
     hls::stream<bool> eMsgHashStrm;
-#pragma HLS stream variable = eMsgHashStrm depth = 2
+#pragma HLS stream variable = eMsgHashStrm depth = 8
 #pragma HLS bind_storage variable = eMsgHashStrm type = fifo impl = srl
 
     kpad<dataW, lW, hshW, keyLen, blockSize, F>(keyStrm, eLenStrm, kipadStrm, kopadStrm, eKipadStrm);

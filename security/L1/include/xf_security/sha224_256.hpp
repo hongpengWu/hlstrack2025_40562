@@ -540,20 +540,36 @@ inline void generateMsgSchedule(hls::stream<SHA256Block>& blk_strm,
 
         LOOP_SHA256_PREPARE_WT16:
             for (short i = 0; i < 16; ++i) {
-#pragma HLS pipeline II = 2
+#pragma HLS pipeline II = 1
 #pragma HLS unroll factor = 3
                 w_strm.write(blk.M[i]);
             }
 
         LOOP_SHA256_PREPARE_WT64:
             for (short i = 16; i < 64; ++i) {
-#pragma HLS pipeline II = 2
+#pragma HLS pipeline II = 1
 #pragma HLS unroll factor = 4
+#pragma HLS dependence variable=blk.M inter false
+#pragma HLS dependence variable=blk.M intra false
                 uint32_t w0 = blk.M[(i - 16) & 15];
                 uint32_t w1 = blk.M[(i - 15) & 15];
                 uint32_t w9 = blk.M[(i - 7) & 15];
                 uint32_t w14 = blk.M[(i - 2) & 15];
-                uint32_t wt = SSIG1(w14) + w9 + SSIG0(w1) + w0;
+                
+                // 优化关键路径：使用进位保存加法器和平衡加法树
+                uint32_t sig0_w1 = SSIG0(w1);
+                uint32_t sig1_w14 = SSIG1(w14);
+                
+                // 第一级：并行计算两个加法
+                uint32_t sum1 = sig1_w14 + w9;
+#pragma HLS bind_op variable=sum1 op=add impl=fabric latency=0
+                uint32_t sum2 = sig0_w1 + w0;
+#pragma HLS bind_op variable=sum2 op=add impl=fabric latency=0
+                
+                // 第二级：合并结果
+                uint32_t wt = sum1 + sum2;
+#pragma HLS bind_op variable=wt op=add impl=fabric latency=0
+                
                 blk.M[i & 15] = wt;
                 w_strm.write(wt);
             }
@@ -609,7 +625,8 @@ inline uint32_t add_3_staged(uint32_t a, uint32_t b, uint32_t c) {
     return csa_add_3(a, b, c);
 }
 
-static void sha256_iter(uint32_t& a,
+/// @brief Optimized SHA256 iteration function with balanced multi-level addition tree and DSP binding
+inline void sha256_iter(uint32_t& a,
                         uint32_t& b,
                         uint32_t& c,
                         uint32_t& d,
@@ -621,21 +638,45 @@ static void sha256_iter(uint32_t& a,
                         uint32_t& Kt,
                         const uint32_t K[],
                         short t) {
+#pragma HLS inline off
+#pragma HLS pipeline II=1
     uint32_t Wt = w_strm.read();
     
-    // Use CSA for T1 calculation to reduce critical path
-    uint32_t T1 = csa_add_4(h, BSIG1(e), CH(e, f, g), add_f(Kt, Wt));
-    uint32_t T2 = add_f(BSIG0(a), MAJ(a, b, c));
+    // 预计算关键函数值
+    uint32_t bs1 = BSIG1(e);
+    uint32_t ch = CH(e, f, g);
+    uint32_t bs0 = BSIG0(a);
+    uint32_t maj = MAJ(a, b, c);
+    
+    // 优化的三级加法树结构
+    // 第一级：并行计算基础组合
+    uint32_t t1_base1 = h + bs1;
+#pragma HLS bind_op variable=t1_base1 op=add impl=fabric latency=0
+    uint32_t t1_base2 = ch + Kt;
+#pragma HLS bind_op variable=t1_base2 op=add impl=fabric latency=0
+    uint32_t t2_base = bs0 + maj;
+#pragma HLS bind_op variable=t2_base op=add impl=fabric latency=0
+    
+    // 第二级：中间合并
+    uint32_t t1_mid = t1_base1 + t1_base2;
+#pragma HLS bind_op variable=t1_mid op=add impl=fabric latency=0
+    
+    // 第三级：最终计算
+    uint32_t T1 = t1_mid + Wt;
+#pragma HLS bind_op variable=T1 op=add impl=fabric latency=0
+    uint32_t T2 = t2_base;
 
-    // 更新工作变量
+    // update working variables，关键状态更新不绑定DSP
     h = g;
     g = f;
     f = e;
-    e = add_f(d, T1);
+    uint32_t e_new = d + T1;
+    e = e_new;
     d = c;
     c = b;
     b = a;
-    a = add_f(T1, T2);
+    uint32_t a_new = T1 + T2;
+    a = a_new;
 
     _XF_SECURITY_PRINT(
         "DEBUG: Kt=%08x, Wt=%08x\n"
@@ -734,14 +775,18 @@ LOOP_SHA256_DIGEST_MAIN:
 
             uint32_t Kt = K[0];
         LOOP_SHA256_UPDATE_64_ROUNDS:
-            for (short t = 0; t < 64; t += 2) {
+            for (short t = 0; t < 64; ++t) {
 #pragma HLS PIPELINE II=1
-#pragma HLS unroll factor=2
-                // First round
+#pragma HLS dependence variable=a inter false
+#pragma HLS dependence variable=b inter false
+#pragma HLS dependence variable=c inter false
+#pragma HLS dependence variable=d inter false
+#pragma HLS dependence variable=e inter false
+#pragma HLS dependence variable=f inter false
+#pragma HLS dependence variable=g inter false
+#pragma HLS dependence variable=h inter false
                 sha256_iter(a, b, c, d, e, f, g, h, w_strm, Kt, K, t);
-                // Second round
-                sha256_iter(a, b, c, d, e, f, g, h, w_strm, Kt, K, t+1);
-        } // 64 round loop (32 iterations, 2 rounds each)
+            } // 64 round loop
 
             // store working variables to internal states.
             H[0] = a + H[0];

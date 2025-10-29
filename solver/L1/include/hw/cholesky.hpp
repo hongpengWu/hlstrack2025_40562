@@ -465,12 +465,12 @@ int choleskyAlt(const InputType A[RowsColsA][RowsColsA], OutputType L[RowsColsA]
 
 row_loop:
     for (int i = 0; i < RowsColsA; i++) {
+#pragma HLS UNROLL
         square_sum = 0;
     col_loop:
         for (int j = 0; j < i; j++) {
 #pragma HLS loop_tripcount max = 1 + RowsColsA / 2
-#pragma HLS PIPELINE II=1
-#pragma HLS UNROLL factor=4
+#pragma HLS UNROLL
             // Prime the off-diagonal sum with target elements A value.
             if (LowerTriangularL == true) {
                 product_sum = A[i][j];
@@ -480,8 +480,7 @@ row_loop:
         sum_loop:
             for (int k = 0; k < RowsColsA; k++) {
 #pragma HLS loop_tripcount max = RowsColsA
-#pragma HLS PIPELINE II = CholeskyTraits::INNER_II
-#pragma HLS UNROLL factor=4
+#pragma HLS UNROLL
 #pragma HLS BIND_OP variable=prod op=mul impl=DSP
                 if (k < j) {
                     prod = -L_internal[i][k] * hls::x_conj(L_internal[j][k]);

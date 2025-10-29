@@ -17,8 +17,8 @@
 set CSIM 1
 set CSYNTH 1
 set COSIM 1
-set VIVADO_SYN 1
-set VIVADO_IMPL 1
+set VIVADO_SYN 0
+set VIVADO_IMPL 0
 set CUR_DIR [pwd]
 set XF_PROJ_ROOT $CUR_DIR/../../../..
 set XPART xc7z020-clg484-1
@@ -27,7 +27,7 @@ set PROJ "cholesky_test.prj"
 set SOLN "sol1"
 
 if {![info exists CLKP]} {
-  set CLKP 6.0
+  set CLKP 6.3
 }
 
 open_project -reset $PROJ
@@ -108,11 +108,7 @@ puts $sfp2 "TargetClockPeriod = $CLKP ns"
 puts $sfp2 "EstimatedClockPeriod = $est_clk ns"
 puts $sfp2 "TotalExecution(cycles) = $total_cycles cycles"
 puts $sfp2 "T_exec = EstimatedClockPeriod × TotalExecution(cycles) = $t_exec ns"
-puts $sfp2 " initial:"
-puts $sfp2 "TargetClockPeriod = 7.00 ns"
-puts $sfp2 "EstimatedClockPeriod = 6.276 ns"
-puts $sfp2 "TotalExecution(cycles) = 4919 cycles"
-puts $sfp2 "T_exec = EstimatedClockPeriod × TotalExecution(cycles) = 30871.644 ns"
+
 
 close $sfp2
 

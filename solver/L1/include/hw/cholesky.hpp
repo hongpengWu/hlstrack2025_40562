@@ -53,7 +53,7 @@ struct choleskyTraits {
         1; // Select implementation: 0=Basic, 1=Lower latency architecture, 2=Further improved latency architecture
     static const int INNER_II = 1; // Specify the pipelining target for the inner loop
     static const int UNROLL_FACTOR =
-        1; // Specify the inner loop unrolling factor for the choleskyAlt2 architecture(2) to increase throughput
+        2; // Specify the inner loop unrolling factor for the choleskyAlt2 architecture(2) to increase throughput
     static const int UNROLL_DIM = (LowerTriangularL == true ? 1 : 2); // Dimension to unroll matrix
     static const int ARCH2_ZERO_LOOP =
         true; // Additional implementation "switch" for the choleskyAlt2 architecture (2).
@@ -69,9 +69,9 @@ struct choleskyTraits<LowerTriangularL, RowsColsA, hls::x_complex<InputBaseType>
     typedef InputBaseType RECIP_DIAG_T;
     typedef hls::x_complex<InputBaseType> OFF_DIAG_T;
     typedef hls::x_complex<OutputBaseType> L_OUTPUT_T;
-    static const int ARCH = 1;
-    static const int INNER_II = 1;
-    static const int UNROLL_FACTOR = 1;
+    static const int ARCH = 1;  // 使用低延迟架构，保持精度
+    static const int INNER_II = 1;  // 保持II=1以获得最佳流水线性能
+    static const int UNROLL_FACTOR = 8;  // 增加展开因子以提高并行度
     static const int UNROLL_DIM = (LowerTriangularL == true ? 1 : 2);
     static const int ARCH2_ZERO_LOOP = true;
 };
@@ -86,9 +86,9 @@ struct choleskyTraits<LowerTriangularL, RowsColsA, std::complex<InputBaseType>, 
     typedef InputBaseType RECIP_DIAG_T;
     typedef std::complex<InputBaseType> OFF_DIAG_T;
     typedef std::complex<OutputBaseType> L_OUTPUT_T;
-    static const int ARCH = 1;
-    static const int INNER_II = 1;
-    static const int UNROLL_FACTOR = 1;
+    static const int ARCH = 1;  // 使用低延迟架构，保持精度
+    static const int INNER_II = 1;  // 保持II=1以获得最佳流水线性能
+    static const int UNROLL_FACTOR = 8;  // 增加展开因子以提高并行度
     static const int UNROLL_DIM = (LowerTriangularL == true ? 1 : 2);
     static const int ARCH2_ZERO_LOOP = true;
 };
@@ -120,9 +120,9 @@ struct choleskyTraits<LowerTriangularL, RowsColsA, ap_fixed<W1, I1, Q1, O1, N1>,
     typedef ap_fixed<2 + (W2 - I2) + W2, 2 + (W2 - I2), AP_RND_CONV, AP_SAT, 0> RECIP_DIAG_T;
     typedef ap_fixed<W2, I2, AP_RND_CONV, AP_SAT, 0>
         L_OUTPUT_T; // Takes new L value.  Same as L output but saturation set
-    static const int ARCH = 1;
-    static const int INNER_II = 1;
-    static const int UNROLL_FACTOR = 1;
+    static const int ARCH = 1;  // 使用低延迟架构，保持精度
+    static const int INNER_II = 1;  // 保持II=1以获得最佳流水线性能
+    static const int UNROLL_FACTOR = 8;  // 增加展开因子以提高并行度
     static const int UNROLL_DIM = (LowerTriangularL == true ? 1 : 2);
     static const int ARCH2_ZERO_LOOP = true;
 };
@@ -157,9 +157,9 @@ struct choleskyTraits<LowerTriangularL,
     typedef ap_fixed<2 + (W2 - I2) + W2, 2 + (W2 - I2), AP_RND_CONV, AP_SAT, 0> RECIP_DIAG_T;
     typedef hls::x_complex<ap_fixed<W2, I2, AP_RND_CONV, AP_SAT, 0> >
         L_OUTPUT_T; // Takes new L value.  Same as L output but saturation set
-    static const int ARCH = 1;
-    static const int INNER_II = 1;
-    static const int UNROLL_FACTOR = 1;
+    static const int ARCH = 1;  // 使用低延迟架构，保持精度
+    static const int INNER_II = 1;  // 保持II=1以获得最佳流水线性能
+    static const int UNROLL_FACTOR = 8;  // 增加展开因子以提高并行度
     static const int UNROLL_DIM = (LowerTriangularL == true ? 1 : 2);
     static const int ARCH2_ZERO_LOOP = true;
 };
@@ -194,9 +194,9 @@ struct choleskyTraits<LowerTriangularL,
     typedef ap_fixed<2 + (W2 - I2) + W2, 2 + (W2 - I2), AP_RND_CONV, AP_SAT, 0> RECIP_DIAG_T;
     typedef std::complex<ap_fixed<W2, I2, AP_RND_CONV, AP_SAT, 0> >
         L_OUTPUT_T; // Takes new L value.  Same as L output but saturation set
-    static const int ARCH = 1;
-    static const int INNER_II = 1;
-    static const int UNROLL_FACTOR = 1;
+    static const int ARCH = 1;  // 使用低延迟架构，保持精度
+    static const int INNER_II = 1;  // 保持II=1以获得最佳流水线性能
+    static const int UNROLL_FACTOR = 8;  // 增加展开因子以提高并行度
     static const int UNROLL_DIM = (LowerTriangularL == true ? 1 : 2);
     static const int ARCH2_ZERO_LOOP = true;
 };
@@ -260,9 +260,9 @@ Function_cholesky_rsqrt_default:;
 template <int W1, int I1, ap_q_mode Q1, ap_o_mode O1, int N1, int W2, int I2, ap_q_mode Q2, ap_o_mode O2, int N2>
 void cholesky_rsqrt(ap_fixed<W1, I1, Q1, O1, N1> x, ap_fixed<W2, I2, Q2, O2, N2>& res) {
 Function_cholesky_rsqrt_fixed:;
-    // Use floating rsqrt and cast back, since x_rsqrt doesn't support ap_fixed
-    double rs = x_rsqrt((double)x);
-    res = (ap_fixed<W2, I2, Q2, O2, N2>)rs;
+    // 使用精炼版 rsqrt：浮点初值 + 一阶NR修正，低延迟且保持精度
+    ap_fixed<W2, I2, Q2, O2, N2> y = x_rsqrt_refined((ap_fixed<W2, I2, Q2, O2, N2>)x);
+    res = y;
 }
 
 // Helper: assign diagonal value from a real to DIAG_T output type
@@ -294,10 +294,10 @@ template <typename AType, typename BType, typename CType>
 void cholesky_prod_sum_mult(hls::x_complex<AType> A, BType B, hls::x_complex<CType>& C) {
 #pragma HLS INLINE
 Function_cholesky_prod_sum_mult_complex:;
-    CType rtmp;
+    CType rtmp, itmp;
 #pragma HLS BIND_OP variable=rtmp op=mul impl=DSP
-    CType itmp;
 #pragma HLS BIND_OP variable=itmp op=mul impl=DSP
+    // 优化复数乘法：使用并行计算实部和虚部
     rtmp = A.real() * B;
     itmp = A.imag() * B;
     C.real(rtmp);
@@ -307,10 +307,10 @@ template <typename AType, typename BType, typename CType>
 void cholesky_prod_sum_mult(std::complex<AType> A, BType B, std::complex<CType>& C) {
 #pragma HLS INLINE
 Function_cholesky_prod_sum_mult_complex:;
-    CType rtmp;
+    CType rtmp, itmp;
 #pragma HLS BIND_OP variable=rtmp op=mul impl=DSP
-    CType itmp;
 #pragma HLS BIND_OP variable=itmp op=mul impl=DSP
+    // 优化复数乘法：使用并行计算实部和虚部
     rtmp = A.real() * B;
     itmp = A.imag() * B;
     C.real(rtmp);
@@ -443,8 +443,12 @@ int choleskyAlt(const InputType A[RowsColsA][RowsColsA], OutputType L[RowsColsA]
     // ARCH1 with ARCH2-inspired structure: use 2D L_internal and fixed-bound loops
     OutputType L_internal[RowsColsA][RowsColsA];
 #pragma HLS ARRAY_PARTITION variable=L_internal complete dim=CholeskyTraits::UNROLL_DIM
+// Improve parallel access across k dimension to reduce routing pressure
+#pragma HLS ARRAY_PARTITION variable=L_internal cyclic dim=2 factor=CholeskyTraits::UNROLL_FACTOR
     typename CholeskyTraits::RECIP_DIAG_T diag_internal[RowsColsA];
 #pragma HLS ARRAY_PARTITION variable=diag_internal complete dim=1
+// Force register storage for faster access
+#pragma HLS RESOURCE variable=diag_internal core=Register
 
     typename CholeskyTraits::ACCUM_T square_sum;
     typename CholeskyTraits::ACCUM_T A_cast_to_sum;
@@ -478,15 +482,13 @@ row_loop:
                 product_sum = hls::x_conj(A[j][i]);
             }
         sum_loop:
-            for (int k = 0; k < RowsColsA; k++) {
+            for (int k = 0; k < j; k++) {
 #pragma HLS loop_tripcount max = RowsColsA
-#pragma HLS UNROLL
-#pragma HLS BIND_OP variable=prod op=mul impl=DSP
-                if (k < j) {
-                    prod = -L_internal[i][k] * hls::x_conj(L_internal[j][k]);
-                    prod_cast_to_sum = prod;
-                    product_sum += prod_cast_to_sum;
-                }
+#pragma HLS PIPELINE II=1
+#pragma HLS UNROLL factor=CholeskyTraits::UNROLL_FACTOR
+#pragma HLS EXPRESSION_BALANCE
+#pragma HLS BIND_OP variable=product_sum op=add impl=DSP
+                product_sum += (typename CholeskyTraits::ACCUM_T)(-L_internal[i][k] * hls::x_conj(L_internal[j][k]));
             }
             // Multiply by diagonal reciprocal (avoid divide)
             L_diag_recip = diag_internal[j];

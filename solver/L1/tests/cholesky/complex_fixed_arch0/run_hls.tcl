@@ -17,8 +17,8 @@
 set CSIM 1
 set CSYNTH 1
 set COSIM 1
-set VIVADO_SYN 0
-set VIVADO_IMPL 0
+set VIVADO_SYN 1
+set VIVADO_IMPL 1
 set CUR_DIR [pwd]
 set XF_PROJ_ROOT $CUR_DIR/../../../..
 set XPART xc7z020-clg484-1
@@ -27,7 +27,7 @@ set PROJ "cholesky_test.prj"
 set SOLN "sol1"
 
 if {![info exists CLKP]} {
-  set CLKP 6.3
+  set CLKP 5.4
 }
 
 open_project -reset $PROJ

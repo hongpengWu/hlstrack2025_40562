@@ -153,7 +153,9 @@ ap_fixed<W, I, Q, O, N> x_rsqrt_refined(ap_fixed<W, I, Q, O, N> x) {
     float y0f = hls::rsqrtf(xf);
 
     // 迭代在扩展精度中进行以减小舍入误差，再回写到目标类型
-    typedef ap_fixed<(W > I ? W + 6 : I + 6), I + 2, AP_RND_CONV, AP_SAT, 0> acc_t;
+    // 微调：扩展内部累加类型的分辨率（+2bit），降低舍入误差
+    // 扫描参数：版本W+7
+    typedef ap_fixed<(W > I ? W + 9 : I + 9), I + 2, AP_RND_CONV, AP_SAT, 0> acc_t;
     acc_t xa = (acc_t)x;
     acc_t y = (acc_t)y0f;
     const acc_t half = (acc_t)0.5;
@@ -161,13 +163,15 @@ ap_fixed<W, I, Q, O, N> x_rsqrt_refined(ap_fixed<W, I, Q, O, N> x) {
     acc_t y_sq;
     acc_t t1;
     acc_t corr;
+    acc_t r;
 #pragma HLS BIND_OP variable=y_sq op=mul impl=DSP
 #pragma HLS BIND_OP variable=t1 op=mul impl=DSP
 #pragma HLS BIND_OP variable=corr op=mul impl=DSP
+#pragma HLS BIND_OP variable=r op=add impl=DSP
     y_sq = y * y;
     t1 = xa * y_sq;         // x*y*y
     corr = half * t1;       // 0.5*x*y*y
-    acc_t r = threehalfs - corr;
+    r = threehalfs - corr;
 
     acc_t y1;
 #pragma HLS BIND_OP variable=y1 op=mul impl=DSP

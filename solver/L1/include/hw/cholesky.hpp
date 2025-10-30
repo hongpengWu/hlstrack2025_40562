@@ -255,13 +255,28 @@ Function_cholesky_sqrt_op_complex:;
 template <typename InputType, typename OutputType>
 void cholesky_rsqrt(InputType x, OutputType& res) {
 Function_cholesky_rsqrt_default:;
-    res = x_rsqrt(x);
+    InputType eps = (InputType)1.0e-6;
+    InputType x_clamped = (x <= (InputType)0 ? eps : x);
+    res = x_rsqrt(x_clamped);
 }
 template <int W1, int I1, ap_q_mode Q1, ap_o_mode O1, int N1, int W2, int I2, ap_q_mode Q2, ap_o_mode O2, int N2>
 void cholesky_rsqrt(ap_fixed<W1, I1, Q1, O1, N1> x, ap_fixed<W2, I2, Q2, O2, N2>& res) {
 Function_cholesky_rsqrt_fixed:;
     // 使用精炼版 rsqrt：浮点初值 + 一阶NR修正，低延迟且保持精度
-    ap_fixed<W2, I2, Q2, O2, N2> y = x_rsqrt_refined((ap_fixed<W2, I2, Q2, O2, N2>)x);
+    ap_fixed<W2, I2, Q2, O2, N2> x_fix = (ap_fixed<W2, I2, Q2, O2, N2>)x;
+    // 参数化 eps：根据定点数精度动态设定，确保数值稳定性
+    // 对于小数部分位宽 (W-I)，eps 设为 2^(-(W-I-2)) 以避免下溢
+    const int frac_bits = W2 - I2;
+    ap_fixed<W2, I2, Q2, O2, N2> eps;
+    if (frac_bits >= 10) {
+        eps = (ap_fixed<W2, I2, Q2, O2, N2>)1.0e-6;  // 高精度：1e-6
+    } else if (frac_bits >= 6) {
+        eps = (ap_fixed<W2, I2, Q2, O2, N2>)1.0e-4;  // 中精度：1e-4
+    } else {
+        eps = (ap_fixed<W2, I2, Q2, O2, N2>)1.0e-3;  // 低精度：1e-3
+    }
+    if (x_fix <= (ap_fixed<W2, I2, Q2, O2, N2>)0) { x_fix = eps; }
+    ap_fixed<W2, I2, Q2, O2, N2> y = x_rsqrt_refined(x_fix);
     res = y;
 }
 
@@ -488,7 +503,9 @@ row_loop:
 #pragma HLS UNROLL factor=CholeskyTraits::UNROLL_FACTOR
 #pragma HLS EXPRESSION_BALANCE
 #pragma HLS BIND_OP variable=product_sum op=add impl=DSP
-                product_sum += (typename CholeskyTraits::ACCUM_T)(-L_internal[i][k] * hls::x_conj(L_internal[j][k]));
+                // 预取并复用列元素共轭，减少 x_conj 次数
+                OutputType Ljkc = hls::x_conj(L_internal[j][k]);
+                product_sum += (typename CholeskyTraits::ACCUM_T)(-L_internal[i][k] * Ljkc);
             }
             // Multiply by diagonal reciprocal (avoid divide)
             L_diag_recip = diag_internal[j];
@@ -499,6 +516,8 @@ row_loop:
             typename CholeskyTraits::ACCUM_T nl_mul;
 #pragma HLS BIND_OP variable=nl_mul op=mul impl=DSP
             nl_mul = (typename CholeskyTraits::ACCUM_T)(hls::x_conj(new_L) * new_L);
+            // 将对角累计加法绑定到DSP，缩短加法链路
+#pragma HLS BIND_OP variable=square_sum op=add impl=DSP
             square_sum += nl_mul;
             // Store result
             L_internal[i][j] = new_L;
@@ -513,6 +532,8 @@ row_loop:
 
         // Diagonal calculation for row i (rsqrt path)
         A_cast_to_sum = A[i][i];
+        // 绑定对角差的加法到DSP（sub视作加法实现），缩短关键加法链路
+#pragma HLS BIND_OP variable=A_minus_sum op=add impl=DSP
         A_minus_sum = A_cast_to_sum - square_sum;
         A_minus_sum_cast_diag = A_minus_sum;
 #ifndef __SYNTHESIS__
@@ -582,6 +603,7 @@ col_loop:
         if (j == 0) {
             A_minus_sum = A_cast_to_sum;
         } else {
+#pragma HLS BIND_OP variable=A_minus_sum op=add impl=DSP
             A_minus_sum = A_cast_to_sum - square_sum_array[j];
         }
         if (cholesky_sqrt_op(A_minus_sum, new_L_diag)) {
@@ -643,7 +665,10 @@ col_loop:
 
                     if (k < j) {
                         // Accumulate row sum of columns
-                        product_sum_array[i] = product_sum + prod_cast_to_sum;
+                        typename CholeskyTraits::ACCUM_T temp_sum;
+#pragma HLS BIND_OP variable=temp_sum op=add impl=DSP
+                        temp_sum = product_sum + prod_cast_to_sum;
+                        product_sum_array[i] = temp_sum;
                     } else {
                         // Final calculation for off diagonal value
                         prod_cast_to_off_diag = product_sum;

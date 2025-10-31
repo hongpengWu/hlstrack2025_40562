@@ -1,29 +1,31 @@
 INFO: [SIM 2] *************** CSIM start ***************
 INFO: [SIM 4] CSIM will launch CLANG as the compiler.
-   Compiling ../../../../../../../Users/vickyiii/.Xilinx/Vitis/2024.2/vitis_libraries/solver/L1/tests/cholesky/host/test_cholesky.cpp in debug mode
-   Compiling ../../../../../../../Users/vickyiii/.Xilinx/Vitis/2024.2/vitis_libraries/solver/L1/tests/cholesky/kernel/kernel_cholesky_0.cpp in debug mode
+make[1]: Entering directory '/home/whp/Desktop/fpgachina25/v/hlstrack2025/solver/L1/tests/cholesky/complex_fixed_arch0/hls/hls/csim/build'
+   Compiling ../../../../../host/test_cholesky.cpp in debug mode
+   Compiling ../../../../../kernel/kernel_cholesky_0.cpp in debug mode
    Generating csim.exe
+make[1]: Leaving directory '/home/whp/Desktop/fpgachina25/v/hlstrack2025/solver/L1/tests/cholesky/complex_fixed_arch0/hls/hls/csim/build'
 Running 1 fixed point tests per matrix type on 3 x 3 matrices with LowerTriangular set to 0
 RESULTS_TABLE,Test,IMAT,L Matching,DUT Ratio,LAPACK Ratio,Relative Ratio Difference
 RESULTS_TABLE,0,1,1,0.333333,0.333333,0
-RESULTS_TABLE,0,2,0,0.747014,0.382765,36.4248
+RESULTS_TABLE,0,2,0,0.764823,0.382765,38.2058
 RESULTS_TABLE,0,3,0,0.479545,0.354167,12.5378
 RESULTS_TABLE,0,4,0,0.508553,0.491726,1.68267
-RESULTS_TABLE,0,5,0,0.723448,0.496184,22.7264
-RESULTS_TABLE,0,6,0,0.521222,0.192952,32.8271
+RESULTS_TABLE,0,5,0,0.477814,0.496184,-1.83705
+RESULTS_TABLE,0,6,0,0.54015,0.192952,34.7198
 RESULTS_TABLE,0,7,0,0.289557,0.258333,3.12245
-RESULTS_TABLE,0,9,0,0.481557,0.441006,4.05514
+RESULTS_TABLE,0,9,0,0.673382,0.441006,23.2376
 SUMMARY_TABLE,imat,Min Ratio, Max Ratio,Min Diff (Smaller),Max Diff (Larger),Same,Better,Worse
 SUMMARY_TABLE,1,0.333333,0.333333,0,0,1,0,0
-SUMMARY_TABLE,2,0.747014,0.747014,0,36.4248,0,0,1
+SUMMARY_TABLE,2,0.764823,0.764823,0,38.2058,0,0,1
 SUMMARY_TABLE,3,0.479545,0.479545,0,12.5378,0,0,1
 SUMMARY_TABLE,4,0.508553,0.508553,0,1.68267,0,0,1
-SUMMARY_TABLE,5,0.723448,0.723448,0,22.7264,0,0,1
-SUMMARY_TABLE,6,0.521222,0.521222,0,32.8271,0,0,1
+SUMMARY_TABLE,5,0.477814,0.477814,-1.83705,0,0,1,0
+SUMMARY_TABLE,6,0.54015,0.54015,0,34.7198,0,0,1
 SUMMARY_TABLE,7,0.289557,0.289557,0,3.12245,0,0,1
 SUMMARY_TABLE,8,30,0,0,0,0,0,0
-SUMMARY_TABLE,9,0.481557,0.481557,0,4.05514,0,0,1
-SUMMARY_TABLE,all,0.289557,0.747014,0,36.4248,1,0,7
+SUMMARY_TABLE,9,0.673382,0.673382,0,23.2376,0,0,1
+SUMMARY_TABLE,all,0.289557,0.764823,-1.83705,38.2058,1,1,6
 TB:Pass
 
 INFO [HLS SIM]: The maximum depth reached by any hls::stream() instance in the design is 9

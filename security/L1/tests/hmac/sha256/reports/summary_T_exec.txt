@@ -1,4 +1,4 @@
-TargetClockPeriod = 9.0 ns
-EstimatedClockPeriod = 7.969 ns
-CosimLatency(max) = 788 cycles
-T_exec = EstimatedClockPeriod × CosimLatency(max) = 6279.572 ns
+TargetClockPeriod = 8.6 ns
+EstimatedClockPeriod = 7.565 ns
+CosimLatency(max) = 798 cycles
+T_exec = EstimatedClockPeriod × CosimLatency(max) = 6109.488 ns

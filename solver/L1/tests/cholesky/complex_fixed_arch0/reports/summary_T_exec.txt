@@ -1,4 +1,4 @@
 TargetClockPeriod = 5.4 ns
 EstimatedClockPeriod = 4.766 ns
-TotalExecution(cycles) = 1863 cycles
-T_exec = EstimatedClockPeriod × TotalExecution(cycles) = 8879.058 ns
+TotalExecution(cycles) = 1335 cycles
+T_exec = EstimatedClockPeriod × TotalExecution(cycles) = 6221.96 ns

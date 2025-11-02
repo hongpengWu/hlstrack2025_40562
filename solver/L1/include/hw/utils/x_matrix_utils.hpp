@@ -86,7 +86,6 @@ static double x_sqrt(double x) {
 template <int W1, int I1, ap_q_mode Q1, ap_o_mode O1, int N1>
 ap_fixed<W1, I1, Q1, O1, N1> x_sqrt(ap_fixed<W1, I1, Q1, O1, N1> x) {
 #pragma HLS INLINE
-    // 使用ap_fixed专用的平方根实现，避免double转换的开销
     return hls::sqrt((float)x);
 }
 
@@ -137,10 +136,10 @@ static double x_rsqrt(double x) {
 template <int W1, int I1, ap_q_mode Q1, ap_o_mode O1, int N1>
 ap_fixed<W1, I1, Q1, O1, N1> x_rsqrt(ap_fixed<W1, I1, Q1, O1, N1> x) {
 #pragma HLS INLINE
-    // 为ap_fixed类型添加专门的倒数平方根实现
     return hls::rsqrt((float)x);
 }
 
+/*
 // 精炼版倒数平方根（NR一阶修正）：在ap_fixed域使用一次牛顿迭代，低延迟高精度
 // 参考改进：以浮点 rsqrt 作为初始值，再进行一次 NR 校正 y = y*(1.5 - 0.5*x*y*y)
 // 文献依据：Walczyk et al., "Improving the Accuracy of the Fast Inverse Square Root" (MDPI Entropy, 2021)
@@ -179,6 +178,7 @@ ap_fixed<W, I, Q, O, N> x_rsqrt_refined(ap_fixed<W, I, Q, O, N> x) {
 
     return (ap_fixed<W, I, Q, O, N>)y1;
 }
+*/
 
 // 二范数平方：针对实数与复数的统一快速实现，用DSP乘法单元
 // Removed x_norm2 helper to revert to original conjugate multiply for accuracy

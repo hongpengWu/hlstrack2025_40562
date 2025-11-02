@@ -9,7 +9,7 @@
 
 ---
 
-## 使用场景 1（从可用性修复入手）
+## 优化阶段一[rsqrt优化]
 
 ### 主要用途
 - 修复 `ap_fixed` 上缺失/低效的 `rsqrt`；保障可综合与性能。
@@ -18,48 +18,49 @@
 
 ### 完整 Prompt 内容
 ```
-角色设定：你是一名资深 HLS C++ 工程师，需在保证对外 API 与 traits 不变的前提下，完成一次“可用性修复”以提升综合友好性与时序稳定性。
+角色设定：作为资深 HLS 算法优化工程师，您需要在保证 Cholesky 算法正确性与接口兼容性的前提下，针对关键路径进行优化，重点优化函数 `cholesky_rsqrt` ，提升整体性能与时序收敛能力。
 
-一、背景与环境
-- 代码位置：`solver/L1/include/hw/cholesky.hpp`（Vivado HLS 项目，包含 `Basic/Alt/Alt2` 三种实现架构，仅使用Alt）。
-- 目标类型覆盖：`ap_fixed`、`hls::x_complex<T>`（其中 `T=ap_fixed`）、`std::complex<T>`。
-- 架构与类型约束：保持 `CholeskyTraits` 内的 `ACCUM_T/ADD_T/DIAG_T/RECIP_DIAG_T/PROD_T/OFF_DIAG_T/L_OUTPUT_T` 等 typedef 与语义不变。
+具体优化任务要求：
 
-二、必须实现的修改项（代码级）
-1) 为 `cholesky_rsqrt(ap_fixed)` 提供可综合后备：
-   - 不得使用 `x_sqrt` 再取倒数；
-   - 采用 `x_rsqrt((double)x)` 计算倒数平方根，并将结果强制转换为目标 `ap_fixed<W2, I2, Q2, O2, N2>`；
-   - 保留默认模板版本：`res = x_rsqrt(x)`；
-   - 该实现需适配 HLS 综合，避免引入不可综合库。
-2) 新增 `cholesky_set_diag_from_real` 三个重载以统一对角赋值：
-   - `T_OUT` 为实数：`dout = (T_OUT)real_val`；
-   - `hls::x_complex<T_OUT>`：`real=real_val, imag=0`；
-   - `std::complex<T_OUT>`：`real=real_val, imag=0`；
-   - 用于保证 complex 对角元素始终为实数，避免隐式虚部残留。
-3) 新增并使用 `cholesky_prod_sum_mult` 三个重载以处理 `complex × real(不同底层类型)`：
-   - 实数版本：`C = A * B`；
-   - `hls::x_complex` 版本：分别计算 `rtmp=A.real()*B`、`itmp=A.imag()*B`，并在两者上添加 `#pragma HLS BIND_OP variable=... op=mul impl=DSP`；
-   - `std::complex` 版本：与上同；
-   - 在 `Alt/Alt2` 非对角路径中替代原生乘法/除法，确保乘法映射到 DSP，稳定时序。
-4) 保持 `choleskyBasic/choleskyAlt/choleskyAlt2` 的对外行为与签名不变：
-   - 本阶段仅替换底层算子与乘法映射，不重写数值路径；
-   - 负值检测、返回码与打印逻辑不在此阶段变更。
+1. 代码定位与分析：
+   - 准确定位 `cholesky_rsqrt` 函数的实现位置
+   - 详细分析当前实现中的计算瓶颈和关键路径
 
-三、实现约束与风格
-- 不修改 `CholeskyTraits`，不新增全局宏；
-- 函数允许使用 `#pragma HLS INLINE/BIND_OP`，但避免破坏既有调度；
-- 禁止引入不可综合的 `std::sqrt` 等；
-- 与现有代码风格保持一致（模板、命名、作用域）。
+2. 文献研究与方案制定：
+   - 系统搜索关于复数定点数 Cholesky 分解优化的最新学术论文
+   - 重点关注矩阵运算优化、并行计算架构和硬件友好算法设计
+   - 结合 Arch1 架构特性，制定硬件协同优化方案
 
-四、输出与交付
-- 直接给出上述三个函数的“完整实现代码块”（可粘贴到 `cholesky.hpp`）；
-- 附带每项修改的动机与预期影响（延迟、资源、时序）；
-- 指明在 `Alt/Alt2` 中的使用点（非对角路径乘以对角倒数）。
+3. 优化实施：
+   - 优先从 `cholesky.hpp` 入手进行优化,采用“脉动阵列进行对角运算，加快效率”
+   - 可考虑修改其他相关头文件，但不得修改 `kernel_cholesky_0.cpp`
+   - 保持当前精度不变，避免牺牲数值稳定性
+   - 每次修改后必须全面检查语法和逻辑正确性
 
-五、验收标准
-- `csim` 通过，功能与旧版一致；
-- 关键乘法映射到 DSP；`rsqrt` 路径延迟低于 `sqrt+reciprocal`；
-- 不引入除法热点与不可综合路径。
+4. 性能评估：
+   - 使用提供的报告文件（csynth.rpt、kernel_cholesky_0_csynth.rpt等）分析优化效果
+   - 重点关注 T_exec = EstimatedClockPeriod × TotalExecution(cycles) 的降低
+   - 确保时序收敛能力得到改善
+
+5. 约束条件：
+   - 必须使用 Arch1 架构
+   - 只能修改 solver 文件夹内的代码
+   - 运行脚本 run_hls.tcl 中除时钟参数外不得修改
+   - 保持接口兼容性，不改变现有函数签名
+
+6. 实施策略：
+   - 采用保守渐进式优化方法
+   - 每次优化后进行全面验证
+   - 记录每次优化的性能提升和修改内容
+   - 确保不引入新的时序违例
+
+请按照以下步骤执行优化工作：
+1. 分析当前实现的关键路径
+2. 研究相关优化文献
+3. 制定具体优化方案
+4. 实施代码修改
+5. 验证优化效果
+6. 迭代优化直至达到性能目标
 ```
 
 ### 模型输出摘要
@@ -146,7 +147,7 @@
 
 ---
 
-## 使用场景 2（对角数值路径重构）
+## 优化阶段二[基本参数调节后遇到的瓶颈，向LLM寻求突破口]
 
 ### 主要用途
 - 将对角计算从显式 `sqrt(d)` 改为 `d * rsqrt(d)` 的等价路径。
@@ -155,42 +156,49 @@
 
 ### 完整 Prompt 内容
 ```
-角色设定：你将以“数值路径重构”为目标，改写 `choleskyAlt` 的对角与非对角计算，在不改变外部接口的前提下提升性能与可综合性。
+角色设定：作为资深 HLS 算法优化工程师，您需要在保证 Cholesky 算法正确性与接口兼容性的前提下，针对关键路径进行优化，重点降低函数 `choleskyAlt_false_3_choleskyTraits_x_complex_x_complex_ap_fixed_s` 的延迟，提升整体性能与时序收敛能力。
 
-一、目标与动机
-- 用 `d * rsqrt(d)` 等价替代显式 `sqrt(d)`，以降低延迟并移除除法热点；
-- 将对角倒数缓存，系统性用乘法替代后续除法；
-- 强化并行调度（`ARRAY_PARTITION/PIPELINE/UNROLL`），并明确 DSP 绑定。
+具体优化任务要求：
 
-二、功能性改动（必须落实到代码）
-1) 对角路径重构：
-   - 计算 `A_minus_sum = real(A[i][i]) - Σ|L(i,k)|^2`；
-   - 显式负数检测：若 `A_minus_sum < 0`，设置 `return_code=1`，在非综合态打印错误；
-   - 直接生成倒数：`cholesky_rsqrt(A_minus_sum, new_L_diag_recip)`；
-   - 得到对角值：`new_L_diag_real = A_minus_sum * new_L_diag_recip`；
-   - 写入对角：`cholesky_set_diag_from_real(new_L_diag_real, new_L_diag)`；
-   - 缓存倒数：`diag_internal[i] = new_L_diag_recip`。
-2) 非对角路径替代除法：
-   - 用 `product_sum × diag_internal[j]` 代替除法，调用 `cholesky_prod_sum_mult(product_sum, L_diag_recip, new_L_off_diag)`；
-   - 在能量累加 `hls::x_conj(new_L) * new_L` 上绑定 DSP（`BIND_OP impl=DSP`）。
-3) 存储与并行：
-   - 使用二维 `L_internal[RowsColsA][RowsColsA]`；
-   - `#pragma HLS ARRAY_PARTITION variable=L_internal complete dim=CholeskyTraits::UNROLL_DIM`；
-   - 对 `A/L` 进行相同维度分区；
-   - 在 `row_loop/col_loop/sum_loop` 设置 `#pragma HLS PIPELINE II=1` 与 `#pragma HLS UNROLL factor=4`（可根据 traits 调整）。
+1. 代码定位与分析：
+   - 准确定位 `choleskyAlt_false_3_choleskyTraits_x_complex_x_complex_ap_fixed_s` 函数的实现位置
+   - 详细分析当前实现中的计算瓶颈和关键路径
 
-三、接口与错误处理
-- 保持函数签名与返回逻辑不变；
-- 负值检测路径统一返回 `1`，其它路径行为一致。
+2. 文献研究与方案制定：
+   - 系统搜索关于复数定点数 Cholesky 分解优化的最新学术论文
+   - 重点关注矩阵运算优化、并行计算架构和硬件友好算法设计
+   - 结合 Arch1 架构特性，制定硬件协同优化方案
 
-四、输出与交付
-- 提供 `choleskyAlt` 的完整函数实现（包含所有 `typedef` 与局部变量、pragma 指令）；
-- 注明新增变量（如 `A_minus_sum_cast_diag`）的用途与类型来源（traits）。
+3. 优化实施：
+   - 优先从 `x_matrix_utils.hpp` 入手进行优化
+   - 可考虑修改其他相关头文件，但不得修改 `kernel_cholesky_0.cpp`
+   - 保持当前精度不变，避免牺牲数值稳定性
+   - 每次修改后必须全面检查语法和逻辑正确性
 
-五、验收标准
-- `csim/cosim` 通过，数值差异仅限固定点舍入与近似误差；
-- 除法热点移除，主循环 `II=1`；
-- 时序更稳，资源在预期范围内。
+4. 性能评估：
+   - 使用提供的报告文件（csynth.rpt、kernel_cholesky_0_csynth.rpt等）分析优化效果
+   - 重点关注 T_exec = EstimatedClockPeriod × TotalExecution(cycles) 的降低
+   - 确保时序收敛能力得到改善
+
+5. 约束条件：
+   - 必须使用 Arch1 架构
+   - 只能修改 solver 文件夹内的代码
+   - 运行脚本 run_hls.tcl 中除时钟参数外不得修改
+   - 保持接口兼容性，不改变现有函数签名
+
+6. 实施策略：
+   - 采用保守渐进式优化方法
+   - 每次优化后进行全面验证
+   - 记录每次优化的性能提升和修改内容
+   - 确保不引入新的时序违例
+
+请按照以下步骤执行优化工作：
+1. 分析当前实现的关键路径
+2. 研究相关优化文献
+3. 制定具体优化方案
+4. 实施代码修改
+5. 验证优化效果
+6. 迭代优化直至达到性能目标
 ```
 
 ### 模型输出摘要
@@ -265,7 +273,7 @@
 
 ---
 
-## 使用场景 3（存储结构与循环调度重塑）
+## 优化阶段三[访存效率优化与矩阵运算优化]
 
 ### 主要用途
 - 将 `Alt` 内部存储从一维压缩三角形改为二维矩阵，减少索引复杂度。
@@ -273,34 +281,49 @@
 
 ### 完整 Prompt 内容
 ```
-角色设定：针对 Alt 架构进行“存储结构与循环调度重塑”，不改变对外接口与 traits。
+角色设定：作为资深 HLS 算法优化工程师，您需要在保证 Cholesky 算法正确性与接口兼容性的前提下，针对关键路径进行优化，重点降低 `row_loop` 的延迟，提升整体性能
 
-一、改动目标（Alt）
-- 用二维 `L_internal[RowsColsA][RowsColsA]` 替代一维压缩三角形，简化索引并匹配并行访问；
-- 在主计算循环中保持 `PIPELINE/UNROLL` 的调度稳定；
-- 将上/下三角零化分离到独立循环，保证主计算路径 `II=1`。
+具体优化任务要求：
 
-二、实现要点（Alt）
-1) 存储与分区：
-   - `#pragma HLS ARRAY_PARTITION variable=L_internal complete dim=CholeskyTraits::UNROLL_DIM`；
-   - 对 `A/L` 进行相同维度的分区以减少访存冲突。
-2) 调度：
-   - 在内层行循环加 `#pragma HLS PIPELINE II=CholeskyTraits::INNER_II` 与适度 `UNROLL factor=CholeskyTraits::UNROLL_FACTOR`；
-   - 明确不合并跨层循环（避免可变长度合并影响调度）。
-3) 非对角计算：
-   - 使用 `cholesky_prod_sum_mult(product_sum, diag_internal[j], new_L_off_diag)`，以乘以对角倒数替代除法；
-   - 保留关键乘法 `BIND_OP impl=DSP` 绑定，降低 LUT 压力。
-4) 零化分离：
-   - 新增独立的零化双层循环，对上/下三角进行清零，并加 `#pragma HLS PIPELINE`。
+1. 代码定位与分析：
+   - 准确定位 row_loop 函数的实现位置
+   - 详细分析当前实现中的计算瓶颈和关键路径
 
-三、验收
-- `csim` 通过，主计算循环 `II=1`；
-- 资源与时序在预期范围，接口与行为保持不变。
+2. 文献研究与方案制定：
+   - 系统搜索关于复数定点数 Cholesky 分解优化的最新学术论文
+   - 重点关注矩阵运算优化、并行计算架构和硬件友好算法设计
+   - 结合 Arch1 架构特性，制定硬件协同优化方案
 
-四、验收标准
-- `csim` 通过；主计算循环 `II=1`；
-- 当零化独立时，资源变化在可接受范围；
-- 接口与行为保持不变，报表指标与现有参考一致或更优。
+3. 优化实施：
+   - 优先从 `cholesky.hpp` 入手进行优化
+   - 可考虑修改其他相关头文件，但不得修改 `kernel_cholesky_0.cpp`
+   - 保持当前精度不变，避免牺牲数值稳定性
+   - 每次修改后必须全面检查语法和逻辑正确性
+
+4. 性能评估：
+   - 使用提供的报告文件（csynth.rpt、kernel_cholesky_0_csynth.rpt等）分析优化效果
+   - 重点关注 T_exec = EstimatedClockPeriod × TotalExecution(cycles) 的降低
+   - 确保时序收敛能力得到改善
+
+5. 约束条件：
+   - 必须使用 Arch1 架构
+   - 只能修改 solver 文件夹内的代码
+   - 运行脚本 run_hls.tcl 中除时钟参数外不得修改
+   - 保持接口兼容性，不改变现有函数签名
+
+6. 实施策略：
+   - 采用保守渐进式优化方法
+   - 每次优化后进行全面验证
+   - 记录每次优化的性能提升和修改内容
+   - 确保不引入新的时序违例
+
+请按照以下步骤执行优化工作：
+1. 分析当前实现的关键路径
+2. 研究相关优化文献
+3. 制定具体优化方案
+4. 实施代码修改
+5. 验证优化效果
+6. 迭代优化直至达到性能目标
 ```
 
 ### 模型输出与落地
@@ -373,13 +396,3 @@
   - `choleskyTop` 架构选择与 `traits` 类型设定保持不变。
 
 ---
-
-## 总结与复现
-
-- 贡献度评估：
-  - 大模型约 25%（数值路径选择、回退实现、pragma 策略建议）；
-  - 人工约 75%（工程化落地、编译与仿真修复、代码插入复核均为手动）。
-- 复现步骤：
-  - 对比并编辑 `\home\whp\Desktop\fpgachina25\v\hlstrack2025\solver\L1\include\hw\cholesky.hpp` 中的对角/非对角路径与辅助函数；
-  - 运行项目内 HLS 脚本进行 `csim/csynth/cosim`，对比报告（时序/资源/周期）。
-- 备注：本记录以“三次使用场景”刻画从可用性修复 → 数值路径重构 → 存储与调度重塑的逐步演进，符合此次变更规模与节奏。

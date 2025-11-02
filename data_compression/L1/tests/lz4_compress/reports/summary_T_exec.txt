@@ -1,0 +1,5 @@
+TargetClockPeriod = 13.9 ns
+EstimatedClockPeriod = 12.460 ns
+CosimLatency(max) = 1599 cycles
+T_exec = EstimatedClockPeriod × CosimLatency(max) = 19923.540 ns
+Compression_ratio = 2.09396

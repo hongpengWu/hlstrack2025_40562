@@ -1,0 +1,8 @@
+INFO: [SIM 2] *************** CSIM start ***************
+INFO: [SIM 4] CSIM will launch CLANG as the compiler.
+   Compiling ../../../../lz4_compress_test.cpp in debug mode
+   Generating csim.exe
+------- Compression Ratio: 2.09396 -------
+INFO [HLS SIM]: The maximum depth reached by any hls::stream() instance in the design is 1248
+INFO: [SIM 1] CSim done with 0 errors.
+INFO: [SIM 3] *************** CSIM finish ***************

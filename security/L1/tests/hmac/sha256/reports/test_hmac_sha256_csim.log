@@ -1,0 +1,24 @@
+INFO: [SIM 2] *************** CSIM start ***************
+INFO: [SIM 4] CSIM will launch CLANG as the compiler.
+   Compiling ../../../../test.cpp in debug mode
+   Generating csim.exe
+********************************
+   Testing hmac+SHA256 on HLS project   
+********************************
+key = key00000000000000000000000000000   len=32
+0x3079656b0x303030300x303030300x303030300x303030300x303030300x303030300x30303030
+msg = The quick brown fox jumps over the lazy dog. Its hmac is 80070713463e7749b90c2dc   len=50
+0x206568540x636975710x7262206b0x206e776f0x20786f660x706d756a0x766f20730x742072650x6c2065680x20797a610x2e676f640x737449200x616d68200x736920630x303038200x313730370x333634330x343737650x303962390x63643263
+key = key00000000000000000000000000000   len=20
+0x3079656b0x303030300x303030300x303030300x303030300x303030300x303030300x30303030
+msg = The quick brown fox jumps over the lazy dog. Its hmac is 80070713463e7749b90c2dc2   len=51
+0x206568540x636975710x7262206b0x206e776f0x20786f660x706d756a0x766f20730x742072650x6c2065680x20797a610x2e676f640x737449200x616d68200x736920630x303038200x313730370x333634330x343737650x303962390x636432630x32
+output:   
+cfe02059a070abd71b5f41f0d06bf644975c061095ca363608957f3ceb112688
+output:   
+21e10b27d582d0103c3e07972d9ea5a9029520f328360922e72f02219bafb260
+
+PASS: 2 inputs verified, no error found.
+INFO [HLS SIM]: The maximum depth reached by any hls::stream() instance in the design is 384
+INFO: [SIM 1] CSim done with 0 errors.
+INFO: [SIM 3] *************** CSIM finish ***************

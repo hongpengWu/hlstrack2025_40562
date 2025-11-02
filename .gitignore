@@ -39,3 +39,8 @@ __pycache__/
 # System files
 .DS_Store
 Thumbs.db
+
+# Allow specific reports directories to be tracked
+!solver/L1/tests/cholesky/complex_fixed_arch0/reports/
+!security/L1/tests/hmac/sha256/reports/
+!data_compression/L1/tests/lz4_compress/reports/

@@ -17,6 +17,8 @@ profile*.csv
 timeline*.csv
 *xclbin.run_summary
 reports
+# Allow specific reports directories to be tracked
+!L1/tests/lz4_compress/reports/
 build
 obj_*
 _x_temp.*
